@@ -1,0 +1,189 @@
+TODO: implement the simple Viterbi algorithm. This function has time out limitation for 3 mins.
+    input:  training data (list of sentences, with tags on the words)
+            E.g. [[(word1, tag1), (word2, tag2)], [(word3, tag3), (word4, tag4)]]
+            test data (list of sentences, no tags on the words)
+            E.g [[word1,word2...]]
+    output: list of sentences with tags on the words
+            E.g. [[(word1, tag1), (word2, tag2)...], [(word1, tag1), (word2, tag2)...]...]
+    '''
+    def laplace_smooth(count, k, N, k_x):
+        return math.log( (count + k) / (N + k_x) )
+    alpha = 0.00001
+
+    predicts = []
+    #raise Exception("You must implement me")
+
+    vocab_size = 0
+    num_starting_positions = 0
+    num_of_tags = 0
+    init_probability_dict = {}
+    emission_probability_dict = {}
+    transition_probability_dict = {}
+    index_to_pair_dict = {}  # for a index store word/tag pair
+    tag_count = Counter() # counts the number of times a tag appeared in a data set
+    tag_word_count = Counter() # count the number of times a tag/word pair appeared in a data set 
+    init_tag_count = Counter() # count the number of times this tag was the start of a sentence
+    tag_pair_count = Counter() # count number of times current tag follows a previous tag tb
+
+    # count the number of times a tag appears in a data set
+    i = 0
+    num_of_tags = 0
+    vocab= set()
+    for sentence in train:
+        i = 0
+        vocab.update(sentence)
+        
+        init_tag_count[sentence[0]] += 1 # count starting position
+        for word_tag_pair in sentence:
+            tag_count[word_tag_pair[1]] += 1 # count tag
+            tag_word_count[word_tag_pair] += 1
+            if(i != 0):
+                    prev_tag = cur_tag 
+            else:
+                    break # there is no previous tag BUT HTIS SHOULD CONTINUE
+            cur_tag = word_tag_pair[1]
+            tag_pair_count[ (prev_tag, cur_tag) ] += 1
+            num_of_tags += 1
+            i += 1
+    vocab_size = len(vocab)
+     
+    num_starting_positions = len(train)
+
+
+    i = 0
+    #CALCULATE THE PROBABILITIES FOR INITIAL AND EMISSION
+    for sentence in test:
+        i = 0
+        #print(sentence)
+        for word in sentence:
+                 
+            for tag in tag_count.keys():
+                
+                    #word = pair[0]
+                    #tag = pair[1]
+                    k_n = alpha * num_of_tags
+                    init_probability = laplace_smooth(init_tag_count[(word,tag)],alpha,num_starting_positions,k_n)
+                    #print(init_probability)
+                    # print(pair)
+                    # print(init_tag_count[(word,tag)])
+                    #raise Exception("BREAK")
+                    init_probability_dict[(word,tag)] = init_probability
+                    #print("INITIAL PROB: ",init_probability, pair[0], tag)
+               
+                    # CALCULATE THE EMISSION
+                
+                    #word = pair[0]
+                    #tag = pair[1]
+                    k_n = alpha * (vocab_size + 1)
+                    emission_probability = laplace_smooth(tag_word_count[(word,tag)],alpha,tag_count[tag],k_n)
+                    emission_probability_dict[(word,tag)] = emission_probability
+
+                    # k_n = alpha * num_of_tags
+                    # trans_probability = laplace_smooth(tag_pair_count[(word,tag)],alpha,num_starting_positions,k_n)
+                    # transition_probability_dict[(word,tag)] = (trans_probability)
+
+    #CALCULATE THE TRANSITION PROBABILITIES, (tag_a is current, tag_b is prev)
+    for tag_a in tag_count.keys():
+        for tag_b in tag_count.keys():
+            k_n = alpha * num_of_tags
+            trans_probability = laplace_smooth(tag_pair_count[(tag_b,tag_a)],alpha,tag_count[tag_b],k_n)
+            transition_probability_dict[(tag_b,tag_a)] = trans_probability
+
+    #print(test[0])
+    
+    # THE TRELLIS
+    t = 0
+    i = 0
+    j = 0
+    for sentence in test:
+        #print(len(sentence))
+        i = 0
+        sub_predicts = []
+        n = len(sentence)
+        m = len(tag_count.keys())
+        trellis = [ [[alpha,None] for v in range(m)] for w in range(n) ]
+        for word in sentence:
+            j = 0
+            #print("TRELLIS: ",trellis)
+            #print(i, " ", j)
+            for tag in tag_count.keys(): 
+                # STARTING POSITION   
+                if( i == 0 ):
+                    temp_tup = (word,tag)
+                    #print(init_probability_dict.get( temp_tup,alpha ))
+                    trellis[i][j] = [ init_probability_dict.get( temp_tup) + emission_probability_dict.get( temp_tup ), None]
+                    print("CUR INITIAL",trellis[i][j], tag)
+        
+                # EMISSION
+                else:
+                    cur_max = -50000000000000000
+                    k = 0 # iterator variable count for back pointer
+                    best_prev = None
+                    for node_value,prev_tag in zip(trellis[i - 1], tag_count.keys()):
+                        if( node_value[0] + transition_probability_dict[(prev_tag,tag)] > cur_max ):
+                            cur_max = node_value[0] + transition_probability_dict[(prev_tag,tag)]
+                            best_prev = (i-1,k)
+                            index_to_pair_dict[ best_prev ] = (word,prev_tag)
+                            #print("CUR_MAX: ", cur_max)
+                            
+                        k += 1
+                    temp_tup = (word,tag)
+                    #print("BEST PREV: ",best_prev)
+                    #print("HERE")
+                    
+                    trellis[i][j] = [emission_probability_dict.get((word,tag))+cur_max, best_prev]
+                    print("CUR",trellis[i][j], tag)
+                    
+
+                j += 1
+            i += 1
+        
+        # END OF SENTENCE
+        k = 0
+        
+        # FIND THE MAX TERMINAL NODE AND ASSIGN APPROPRIATE WORD/TAG PAIR
+        cur_max_node = [-5000000000000000000000000,None]
+        #print(trellis[i-1])
+        for node_terminal, tag_2 in zip(trellis[i-1],tag_count.keys()):
+            #if()
+            #print("HERE", tag_2, node_terminal[0])
+            if(node_terminal[0] > cur_max_node[0] and node_terminal[0] != 0):
+                cur_max_node = node_terminal
+                index_to_pair_dict[ (i,k) ] = (word, tag_2) # can use word cause terminal node
+                terminal_tag_index = k # tag index in terminal nodes
+                #print("HERE", tag_2, node_terminal[0])
+            k += 1
+            #print(tag_2)
+        #print(cur_max_node)
+
+        # GET PREDICTIONS
+        cur_node = cur_max_node
+        p_i = cur_node[1] # index of parent in Trellis 2D array
+        #print("P_I: ",p_i)
+        k = 0
+        while(p_i != None or k ==0):
+            #print("HERE")
+            if(k == 0 and p_i != None):
+                node_pair = index_to_pair_dict[ (i,terminal_tag_index) ]
+                
+            elif(p_i == None and k == 0):
+                node_pair = index_to_pair_dict[ (i,terminal_tag_index) ]
+                sub_predicts.append(node_pair)
+                break
+            else:
+                node_pair = index_to_pair_dict[ (p_i[0],p_i[1]) ]
+            sub_predicts.append(node_pair)
+            cur_node = trellis[ p_i[0] ][ p_i[1] ] #Go to parent node
+            p_i = cur_node[1] # go to current parent's parent index
+            k += 1
+        sub_predicts.reverse()
+        #print(len(sub_predicts))
+        print(sub_predicts)
+        print("Break")
+        print(sentence)
+        if(t > -1):
+            raise Exception("BREAK")
+        predicts.append(sub_predicts)
+        t += 1
+                
+    return predicts
